@@ -41,9 +41,16 @@ async def middleware(request: Request, call_next):
     if len(history) >= LIMIT:
         response = JSONResponse(
             status_code=429,
-            content={"detail": "Rate limit exceeded"},
+            content={"detail": "Rate limit exceeded"}
         )
+
         response.headers["X-Request-ID"] = rid
+        response.headers["Access-Control-Allow-Origin"] = request.headers.get(
+            "Origin",
+            "https://exam.sanand.workers.dev"
+        )
+        response.headers["Access-Control-Expose-Headers"] = "X-Request-ID"
+
         return response
 
     history.append(now)
