@@ -26,7 +26,7 @@ DEFAULTS = {
 CONFIG = DEFAULTS.copy()
 
 # YAML
-with open("config.development.yaml") as f:
+with open("config.dev.yaml") as f:
     CONFIG.update(yaml.safe_load(f) or {})
 
 # .env
