@@ -46,14 +46,15 @@ def options_orders():
     response.headers["Access-Control-Allow-Headers"] = "*"
     return response
 
+
 @app.post("/orders", status_code=201)
 def create_order(
     response: Response,
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
-    client_id: str = Header("default", alias="X-Client-Id")
+    x_client_id: str = Header("default", alias="X-Client-Id")
 ):
 
-    check_rate(client_id)
+    check_rate(x_client_id)
 
     if idempotency_key not in orders:
         orders[idempotency_key] = {

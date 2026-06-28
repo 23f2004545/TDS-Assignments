@@ -63,14 +63,14 @@ async def middleware(request: Request, call_next):
 
 
 @app.options("/ping")
-def options():
+def options(request: Request):
+    rid = request.headers.get("X-Request-ID", str(uuid.uuid4()))
 
     response = Response(status_code=204)
-
     response.headers["Access-Control-Allow-Origin"] = "https://app-5zwmao.example.com"
     response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "*"
-
+    response.headers["X-Request-ID"] = rid
     return response
 
 
