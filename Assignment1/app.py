@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi import Response
 import uuid
 import time
 
@@ -12,10 +13,10 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[ALLOWED_ORIGIN],
+    allow_origins=["https://dash-ja7woi.example.com"],
+    allow_credentials=True,
     allow_methods=["GET", "OPTIONS"],
     allow_headers=["*"],
-    allow_credentials=False,
 )
 
 
@@ -38,6 +39,14 @@ async def request_middleware(request: Request, call_next):
 def home():
     return {"status": "ok"}
 
+
+@app.options("/stats")
+async def options_stats():
+    response = Response()
+    response.headers["Access-Control-Allow-Origin"] = "https://dash-ja7woi.example.com"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 @app.get("/stats")
 def stats(values: str):
