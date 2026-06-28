@@ -19,6 +19,7 @@ app.add_middleware(
         "https://app-5zwmao.example.com",
         "https://exam.sanand.workers.dev"
     ],
+    allow_origins=["*"],
     allow_methods=["GET", "OPTIONS"],
     allow_headers=["*"],
 )
