@@ -17,10 +17,10 @@ app.add_middleware(
 
 DEFAULTS = {
     "port": 8000,
-    "workers": 2,
+    "workers": 1,
     "debug": False,
     "log_level": "info",
-    "api_key": "default-secret"
+    "api_key": "default-secret-000"
 }
 
 CONFIG = DEFAULTS.copy()
