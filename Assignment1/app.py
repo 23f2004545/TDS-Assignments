@@ -1,30 +1,32 @@
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uuid
 import time
 
+EMAIL = "23f2004545@ds.study.iitm.ac.in"
+
+ALLOWED_ORIGIN = "https://dash-ja7woi.example.com"
+
 app = FastAPI()
 
-EMAIL = "23f2004545@ds.study.iitm.ac.in"
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[ALLOWED_ORIGIN],
+    allow_methods=["GET", "OPTIONS"],
+    allow_headers=["*"],
+    allow_credentials=False,
+)
 
 
 @app.middleware("http")
-async def add_request_headers(request: Request, call_next):
-    """
-    Middleware executed for every request.
-
-    Adds:
-    - X-Request-ID
-    - X-Process-Time
-    """
-
+async def request_middleware(request: Request, call_next):
     request_id = str(uuid.uuid4())
-
-    start_time = time.perf_counter()
+    start = time.perf_counter()
 
     response = await call_next(request)
 
-    process_time = time.perf_counter() - start_time
+    process_time = time.perf_counter() - start
 
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time"] = f"{process_time:.6f}"
@@ -34,36 +36,25 @@ async def add_request_headers(request: Request, call_next):
 
 @app.get("/")
 def home():
-    return {"message": "API Running"}
+    return {"status": "ok"}
 
 
 @app.get("/stats")
 def stats(values: str):
-    """
-    Example:
-    /stats?values=1,2,3,4,5
-    """
-
     try:
-        numbers = [int(x.strip()) for x in values.split(",")]
+        nums = [int(x.strip()) for x in values.split(",")]
 
-    except ValueError:
+        return {
+            "email": EMAIL,
+            "count": len(nums),
+            "sum": sum(nums),
+            "min": min(nums),
+            "max": max(nums),
+            "mean": sum(nums) / len(nums),
+        }
+
+    except Exception:
         return JSONResponse(
             status_code=400,
-            content={"error": "values must be comma-separated integers"},
+            content={"error": "Invalid input"},
         )
-
-    count = len(numbers)
-    total = sum(numbers)
-    minimum = min(numbers)
-    maximum = max(numbers)
-    mean = total / count
-
-    return {
-        "email": EMAIL,
-        "count": count,
-        "sum": total,
-        "min": minimum,
-        "max": maximum,
-        "mean": mean,
-    }
