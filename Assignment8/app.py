@@ -7,10 +7,7 @@ import os , re
 
 app = FastAPI()
 
-OLLAMA_URL = os.getenv(
-    "OLLAMA_URL",
-    "http://localhost:11434/v1/chat/completions"
-)
+OLLAMA_URL = "https://aggregate-appear-realtor-jefferson.trycloudflare.com/v1/chat/completions"
 MODEL = "llama3.2"
 
 
