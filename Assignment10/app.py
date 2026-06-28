@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
 import uuid
 import time
 
@@ -17,9 +17,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://app-5zwmao.example.com",
-        "https://exam.sanand.workers.dev"
+        "https://exam.sanand.workers.dev",
     ],
-    allow_methods=["GET", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["X-Request-ID"],
 )
@@ -28,20 +28,12 @@ app.add_middleware(
 @app.middleware("http")
 async def middleware(request: Request, call_next):
 
-    rid = request.headers.get(
-        "X-Request-ID",
-        str(uuid.uuid4())
-    )
-
+    rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     request.state.request_id = rid
 
-    client = request.headers.get(
-        "X-Client-Id",
-        "default"
-    )
+    client = request.headers.get("X-Client-Id", "default")
 
     now = time.time()
-
     history = clients.setdefault(client, [])
 
     history[:] = [t for t in history if now - t < WINDOW]
@@ -63,22 +55,9 @@ async def middleware(request: Request, call_next):
     return response
 
 
-@app.options("/ping")
-def options(request: Request):
-    rid = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-
-    response = Response(status_code=204)
-    response.headers["Access-Control-Allow-Origin"] = "https://app-5zwmao.example.com"
-    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    response.headers["X-Request-ID"] = rid
-    return response
-
-
 @app.get("/ping")
 def ping(request: Request):
-
     return {
         "email": EMAIL,
-        "request_id": request.state.request_id
+        "request_id": request.state.request_id,
     }

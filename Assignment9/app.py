@@ -33,8 +33,10 @@ def check_rate(client_id):
     if len(history) >= RATE_LIMIT:
         return JSONResponse(
             status_code=429,
-            headers={"Retry-After": "10"},
-            detail="Rate limit exceeded"
+            content={"detail": "Rate limit exceeded"},
+            headers={
+                "Retry-After": "10"
+            }
         )
 
     history.append(now)
@@ -56,9 +58,9 @@ def create_order(
     x_client_id: str = Header("default", alias="X-Client-Id")
 ):
 
-    rate = check_rate(x_client_id)
-    if rate:
-        return rate
+    response = check_rate(x_client_id)
+    if response is not None:
+        return response
 
     if idempotency_key not in orders:
         orders[idempotency_key] = {
@@ -75,9 +77,9 @@ def list_orders(
     x_client_id: str = Header("default", alias="X-Client-Id")
 ):
 
-    rate = check_rate(x_client_id)
-    if rate:
-        return rate
+    response = check_rate(x_client_id)
+    if response is not None:
+        return response
 
     start = int(cursor) if cursor else 1
 
