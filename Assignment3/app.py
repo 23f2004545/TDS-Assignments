@@ -26,24 +26,31 @@ DEFAULTS = {
 CONFIG = DEFAULTS.copy()
 
 # YAML
-if os.path.exists("config.dev.yaml"):
-    with open("config.dev.yaml") as f:
-        CONFIG.update(yaml.safe_load(f) or {})
+with open("config.development.yaml") as f:
+    CONFIG.update(yaml.safe_load(f) or {})
 
 # .env
 if os.getenv("NUM_WORKERS"):
-    CONFIG["workers"] = os.getenv("NUM_WORKERS")
+    CONFIG["workers"] = int(os.getenv("NUM_WORKERS"))
 
-if os.getenv("LOG_LEVEL"):
-    CONFIG["log_level"] = os.getenv("LOG_LEVEL")
+if os.getenv("APP_LOG_LEVEL"):
+    CONFIG["log_level"] = os.getenv("APP_LOG_LEVEL")
 
-if os.getenv("API_KEY"):
-    CONFIG["api_key"] = os.getenv("API_KEY")
+if os.getenv("APP_API_KEY"):
+    CONFIG["api_key"] = os.getenv("APP_API_KEY")
 
-# APP_* environment variables
+# OS Environment
 for k, v in os.environ.items():
     if k.startswith("APP_"):
-        CONFIG[k[4:].lower()] = v
+        key = k[4:].lower()
+
+        if key == "debug":
+            CONFIG["debug"] = str(v).lower() in (
+                "true",
+                "1",
+                "yes",
+                "on",
+            )
 
 
 def cast(key, value):
