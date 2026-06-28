@@ -31,13 +31,14 @@ def check_rate(client_id):
     history[:] = [t for t in history if now - t < WINDOW]
 
     if len(history) >= RATE_LIMIT:
-        raise JSONResponse(
+        return JSONResponse(
             status_code=429,
             headers={"Retry-After": "10"},
             detail="Rate limit exceeded"
         )
 
     history.append(now)
+    return None
 
 @app.options("/orders")
 def options_orders():
@@ -55,7 +56,9 @@ def create_order(
     x_client_id: str = Header("default", alias="X-Client-Id")
 ):
 
-    check_rate(x_client_id)
+    rate = check_rate(x_client_id)
+    if rate:
+        return rate
 
     if idempotency_key not in orders:
         orders[idempotency_key] = {
@@ -69,10 +72,12 @@ def create_order(
 def list_orders(
     limit: int = 10,
     cursor: str | None = None,
-    x_client_id: str = Header("default")
+    x_client_id: str = Header("default", alias="X-Client-Id")
 ):
 
-    check_rate(x_client_id)
+    rate = check_rate(x_client_id)
+    if rate:
+        return rate
 
     start = int(cursor) if cursor else 1
 
