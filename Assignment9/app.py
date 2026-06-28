@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Header, Response
+from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from threading import Lock
 import uuid
 import time
 
@@ -8,11 +9,11 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins=["https://exam.sanand.workers.dev"],
-    allow_origins=["*"],
+    allow_origins=["https://exam.sanand.workers.dev"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Retry-After"],
 )
 
 TOTAL = 49
@@ -21,46 +22,44 @@ WINDOW = 10
 
 orders = {}
 client_requests = {}
+lock = Lock()
 
 
-def check_rate(client_id):
+def check_rate(client_id: str):
     now = time.time()
 
-    history = client_requests.setdefault(client_id, [])
+    with lock:
+        history = client_requests.setdefault(client_id, [])
 
-    history[:] = [t for t in history if now - t < WINDOW]
+        history[:] = [
+            t for t in history
+            if now - t < WINDOW
+        ]
 
-    if len(history) >= RATE_LIMIT:
-        return JSONResponse(
-            status_code=429,
-            content={"detail": "Rate limit exceeded"},
-            headers={
-                "Retry-After": "10"
-            }
-        )
+        if len(history) >= RATE_LIMIT:
+            response = JSONResponse(
+                status_code=429,
+                content={
+                    "detail": "Rate limit exceeded"
+                },
+            )
+            response.headers["Retry-After"] = "10"
+            return response
 
-    history.append(now)
+        history.append(now)
+
     return None
-
-@app.options("/orders")
-def options_orders():
-    response = Response(status_code=204)
-    response.headers["Access-Control-Allow-Origin"] = "https://exam.sanand.workers.dev"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    return response
 
 
 @app.post("/orders", status_code=201)
 def create_order(
-    response: Response,
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
-    x_client_id: str = Header("default", alias="X-Client-Id")
+    x_client_id: str = Header("default", alias="X-Client-Id"),
 ):
 
-    response = check_rate(x_client_id)
-    if response is not None:
-        return response
+    rate = check_rate(x_client_id)
+    if rate:
+        return rate
 
     if idempotency_key not in orders:
         orders[idempotency_key] = {
@@ -73,23 +72,26 @@ def create_order(
 @app.get("/orders")
 def list_orders(
     limit: int = 10,
-    cursor: str | None = None,
-    x_client_id: str = Header("default", alias="X-Client-Id")
+    cursor: str = "1",
+    x_client_id: str = Header("default", alias="X-Client-Id"),
 ):
 
-    response = check_rate(x_client_id)
-    if response is not None:
-        return response
+    rate = check_rate(x_client_id)
+    if rate:
+        return rate
 
-    start = int(cursor) if cursor else 1
+    start = max(int(cursor), 1)
 
     end = min(start + limit - 1, TOTAL)
 
-    items = [{"id": i} for i in range(start, end + 1)]
+    items = [
+        {"id": i}
+        for i in range(start, end + 1)
+    ]
 
-    next_cursor = str(end + 1) if end < TOTAL else None
+    next_cursor = str(end + 1) if end < TOTAL else ""
 
     return {
         "items": items,
-        "next_cursor": next_cursor
+        "next_cursor": next_cursor,
     }
