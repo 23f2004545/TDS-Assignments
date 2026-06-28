@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
+from fastapi.responses import JSONResponse
 import requests
 
 app = FastAPI()
@@ -22,6 +23,12 @@ class ExtractResponse(BaseModel):
 @app.post("/extract", response_model=ExtractResponse)
 def extract(req: ExtractRequest):
 
+    if not req.text or not req.text.strip():
+        raise JSONResponse(
+            status_code=422,
+            detail="Text cannot be empty"
+        )
+
     prompt = f"""
 Extract these invoice fields.
 
@@ -36,7 +43,6 @@ Schema:
 }}
 
 Invoice:
-
 {req.text}
 """
 
@@ -45,25 +51,17 @@ Invoice:
         json={
             "model": MODEL,
             "messages": [
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
+                {"role": "user", "content": prompt}
             ],
             "stream": False,
             "temperature": 0,
-            "response_format": {
-                "type": "json_object"
-            },
         },
         timeout=60,
     )
 
-    data = response.json()
-
-    content = data["choices"][0]["message"]["content"]
-
     import json
+
+    content = response.json()["choices"][0]["message"]["content"]
 
     obj = json.loads(content)
 
