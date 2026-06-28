@@ -31,6 +31,11 @@ async def middleware(request: Request, call_next):
         "X-Request-ID",
         str(uuid.uuid4())
     )
+    
+    request.state.request_id = rid
+    
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = rid
 
     client = request.headers.get(
         "X-Client-Id",
@@ -51,11 +56,11 @@ async def middleware(request: Request, call_next):
 
     history.append(now)
 
-    response = await call_next(request)
+    # response = await call_next(request)
 
-    response.headers["X-Request-ID"] = rid
+    # response.headers["X-Request-ID"] = rid
 
-    request.state.request_id = rid
+    # request.state.request_id = rid
 
     return response
 
