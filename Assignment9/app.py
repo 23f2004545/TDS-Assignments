@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Header, HTTPException, Response
+from fastapi import FastAPI, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uuid
@@ -8,7 +8,8 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://exam.sanand.workers.dev"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -37,6 +38,13 @@ def check_rate(client_id):
 
     history.append(now)
 
+@app.options("/orders")
+def options_orders():
+    response = Response(status_code=204)
+    response.headers["Access-Control-Allow-Origin"] = "https://exam.sanand.workers.dev"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 @app.post("/orders", status_code=201)
 def create_order(
