@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import uuid
 import time
 
@@ -28,7 +29,7 @@ def check_rate(client_id):
     history[:] = [t for t in history if now - t < WINDOW]
 
     if len(history) >= RATE_LIMIT:
-        raise HTTPException(
+        raise JSONResponse(
             status_code=429,
             headers={"Retry-After": "10"},
             detail="Rate limit exceeded"

@@ -31,11 +31,8 @@ async def middleware(request: Request, call_next):
         "X-Request-ID",
         str(uuid.uuid4())
     )
-    
+
     request.state.request_id = rid
-    
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = rid
 
     client = request.headers.get(
         "X-Client-Id",
@@ -49,25 +46,26 @@ async def middleware(request: Request, call_next):
     history[:] = [t for t in history if now - t < WINDOW]
 
     if len(history) >= LIMIT:
-        return JSONResponse(
+        response = JSONResponse(
             status_code=429,
-            content={"detail": "Rate limit exceeded"}
+            content={"detail": "Rate limit exceeded"},
         )
+        response.headers["X-Request-ID"] = rid
+        return response
 
     history.append(now)
 
-    # response = await call_next(request)
+    response = await call_next(request)
 
-    # response.headers["X-Request-ID"] = rid
-
-    # request.state.request_id = rid
+    response.headers["X-Request-ID"] = rid
 
     return response
 
 
 @app.options("/ping")
 def options():
-    response = Response()
+
+    response = Response(status_code=204)
 
     response.headers["Access-Control-Allow-Origin"] = "https://app-5zwmao.example.com"
     response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
