@@ -25,10 +25,10 @@ class ExtractResponse(BaseModel):
 @app.post("/extract", response_model=ExtractResponse)
 def extract(req: ExtractRequest):
 
-    if not req.text.strip():
+    if not req.text or not req.text.strip():
         raise HTTPException(
             status_code=422,
-            detail=str(e)
+            detail="Empty text"
         )
 
     prompt = f"""
@@ -94,8 +94,8 @@ Invoice:
         obj = json.loads(match.group(0))
 
         return ExtractResponse(**obj)
-    except : 
+    except Exception as e:
         raise HTTPException(
-                status_code=422,
-                detail=f"Unexpected response: {raw}"
-            )
+            status_code=422,
+            detail=str(e)
+        )
