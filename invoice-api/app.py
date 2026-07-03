@@ -49,7 +49,7 @@ def extract():
         invoice_text = request.json.get("invoice_text", "")
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
+            model="gemini-2.5-flash",
             contents=f"{PROMPT}\n\nInvoice:\n{invoice_text}"
         )
 
