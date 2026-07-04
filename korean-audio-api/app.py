@@ -9,7 +9,7 @@ from statistics import (
     pvariance,
 )
 
-from fastapi import APIRouter, Request
+from fastapi import FastAPI, APIRouter, Request
 from google import genai
 from google.genai import types
 
@@ -40,6 +40,10 @@ def parse_json(text: str):
     raise ValueError("No valid JSON found in model response.")
 
 router = APIRouter()
+
+app = FastAPI()
+
+app.include_router(router)
 
 # Gemini client
 client = genai.Client(api_key=config.GEMINI_API_KEY)
