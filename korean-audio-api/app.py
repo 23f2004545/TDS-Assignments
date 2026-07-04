@@ -215,6 +215,11 @@ def inspect():
             print("JSON PARSE ERROR:", e)
 
             return jsonify(empty_response())
+    except Exception as e:
+
+        print(e)
+
+        return jsonify(empty_response())
     
 
 if __name__ == "__main__":
