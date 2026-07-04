@@ -1,5 +1,5 @@
 import base64
-import io
+import json
 import re
 from statistics import (
     mean,
@@ -14,7 +14,30 @@ from google import genai
 from google.genai import types
 
 from config import config
-from utils import parse_json
+
+def parse_json(text: str):
+    """
+    Extract the first JSON object from an LLM response.
+    Handles responses wrapped in ```json ... ``` fences.
+    """
+    text = text.strip()
+
+    # Remove markdown code fences if present
+    text = re.sub(r"^```json\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"^```\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Fallback: extract first JSON object
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        return json.loads(match.group(0))
+
+    raise ValueError("No valid JSON found in model response.")
 
 router = APIRouter()
 
