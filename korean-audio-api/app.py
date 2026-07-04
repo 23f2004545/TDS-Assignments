@@ -1,10 +1,19 @@
 import os
-import json
 import base64
 import hashlib
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from dotenv import load_dotenv
+
+from google import genai
+from google.genai import types
+
+load_dotenv()
+
+client = genai.Client(
+    api_key=os.getenv("GEMINI_API_KEY")
+)
 
 app = Flask(__name__)
 CORS(app)
@@ -42,62 +51,76 @@ def inspect():
 
         data = request.get_json(force=True)
 
-        print("\n" + "=" * 80)
-        print("NEW REQUEST")
-        print("=" * 80)
-
-        print("\nKeys:")
-        print(list(data.keys()))
-
         audio_id = data.get("audio_id")
 
         audio_b64 = data.get("audio_base64", "")
 
-        print("\naudio_id:")
-        print(audio_id)
-
-        print("\nBase64 length:")
-        print(len(audio_b64))
-
         audio_bytes = base64.b64decode(audio_b64)
 
-        print("\nDecoded bytes:")
-        print(len(audio_bytes))
+        print("\n")
+        print("=" * 80)
+        print("NEW AUDIO")
+        print("=" * 80)
 
-        print("\nFirst 64 bytes (hex):")
-        print(audio_bytes[:64].hex())
+        print("audio_id:", audio_id)
 
-        print("\nFirst 32 raw bytes:")
-        print(audio_bytes[:32])
+        print("base64 length:", len(audio_b64))
 
-        print("\nSHA256:")
-        print(hashlib.sha256(audio_bytes).hexdigest())
+        print("decoded bytes:", len(audio_bytes))
 
-        print("\nMagic bytes:")
-        print(audio_bytes[:16])
+        print("sha256:", hashlib.sha256(audio_bytes).hexdigest())
 
-        if audio_bytes.startswith(b"RIFF"):
-            print("Detected WAV")
+        print("first16:", audio_bytes[:16].hex())
+
+        if audio_bytes[:2] == b"\xff\xf3" or audio_bytes[:2] == b"\xff\xfb":
+            print("FORMAT: MP3")
+
+        elif audio_bytes.startswith(b"RIFF"):
+            print("FORMAT: WAV")
 
         elif audio_bytes.startswith(b"OggS"):
-            print("Detected OGG")
-
-        elif audio_bytes.startswith(b"ID3"):
-            print("Detected MP3")
-
-        elif audio_bytes.startswith(b"fLaC"):
-            print("Detected FLAC")
-
-        elif audio_bytes.startswith(b"PK"):
-            print("Detected ZIP")
-
-        elif audio_bytes.startswith(b"{"):
-            print("Detected JSON")
+            print("FORMAT: OGG")
 
         else:
-            print("Unknown format")
+            print("FORMAT: UNKNOWN")
 
-        print("=" * 80 + "\n")
+        filename = f"{audio_id}.mp3"
+
+        with open(filename, "wb") as f:
+            f.write(audio_bytes)
+
+        print("saved:", filename)
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                types.Part.from_bytes(
+                    data=audio_bytes,
+                    mime_type="audio/mpeg"
+                ),
+                """
+You are given Korean speech.
+
+Return ONLY the spoken text.
+
+Do not translate.
+
+Do not explain.
+
+If the speech is describing a table,
+include every row exactly.
+"""
+            ]
+        )
+
+        transcript = response.text.strip()
+
+        print("\n")
+        print("=" * 80)
+        print("TRANSCRIPT")
+        print("=" * 80)
+        print(transcript)
+        print("=" * 80)
 
         return jsonify(empty_response())
 
