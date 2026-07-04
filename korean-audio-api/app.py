@@ -14,7 +14,7 @@ from google import genai
 from google.genai import types
 
 from config import config
-from utils import chat, parse_json
+from utils import parse_json
 
 router = APIRouter()
 
