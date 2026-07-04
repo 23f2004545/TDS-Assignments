@@ -1,5 +1,6 @@
 fastapi
 gunicorn
+utils
 google-genai
 python-dotenv
 httpx
