@@ -1,4 +1,4 @@
-import os
+import os , json
 import base64
 import hashlib
 
@@ -90,7 +90,8 @@ def inspect():
             f.write(audio_bytes)
 
         print("saved:", filename)
-
+        
+        
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=[
@@ -99,37 +100,122 @@ def inspect():
                     mime_type="audio/mpeg"
                 ),
                 """
-You are given Korean speech.
+        You are given a Korean audio recording.
 
-Return ONLY the spoken text.
+        Understand EVERYTHING spoken.
 
-Do not translate.
+        Do NOT summarize.
 
-Do not explain.
+        Do NOT omit constraints.
 
-If the speech is describing a table,
-include every row exactly.
-"""
+        Your task is:
+
+        1. Produce a verbatim transcript.
+
+        2. Extract every instruction mentioned.
+
+        This includes:
+
+        - dataset size
+        - column names
+        - column types
+        - categorical values
+        - numeric ranges
+        - distributions
+        - random seed
+        - ordering
+        - formulas
+        - statistical operations
+        - every explicit or implicit constraint
+
+        3. Follow those instructions exactly.
+
+        4. Generate the requested dataset.
+
+        5. Compute:
+
+        rows
+        columns
+        mean
+        std
+        variance
+        min
+        max
+        median
+        mode
+        range
+        allowed_values
+        value_range
+        correlation
+
+        Return ONLY valid JSON.
+
+        {
+        "debug":{
+            "transcript":"",
+            "instructions":{}
+        },
+        "result":{
+            "rows":0,
+            "columns":[],
+            "mean":{},
+            "std":{},
+            "variance":{},
+            "min":{},
+            "max":{},
+            "median":{},
+            "mode":{},
+            "range":{},
+            "allowed_values":{},
+            "value_range":{},
+            "correlation":[]
+        }
+        }
+
+        Do not wrap the JSON inside markdown.
+        Do not write anything before or after the JSON.
+        """
             ]
         )
 
-        transcript = response.text.strip()
+        raw = response.text.strip()
 
         print("\n")
         print("=" * 80)
-        print("TRANSCRIPT")
+        print("RAW GEMINI OUTPUT")
         print("=" * 80)
-        print(transcript)
+        print(raw)
         print("=" * 80)
 
-        return jsonify(empty_response())
+        # Remove accidental markdown fences
+        raw = raw.replace("```json", "").replace("```", "").strip()
 
-    except Exception as e:
+        try:
 
-        print(e)
+            parsed = json.loads(raw)
 
-        return jsonify(empty_response())
+            print("\n")
+            print("=" * 80)
+            print("TRANSCRIPT")
+            print("=" * 80)
+            print(parsed["debug"]["transcript"])
 
+            print("\n")
+            print("=" * 80)
+            print("INSTRUCTIONS")
+            print("=" * 80)
+            print(json.dumps(parsed["debug"]["instructions"], indent=2, ensure_ascii=False))
+
+            print("=" * 80)
+
+            return jsonify(parsed["result"])
+
+        except Exception as e:
+
+            print("JSON PARSE ERROR:", e)
+
+            return jsonify(empty_response())
+    
 
 if __name__ == "__main__":
 
