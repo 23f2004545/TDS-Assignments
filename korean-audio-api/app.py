@@ -99,6 +99,20 @@ async def answer_audio(request: Request):
     last_debug_info["transcript"] = transcript
 
     prompt = (
+        "You are an information extraction system.\n"
+        "Return ONLY valid JSON.\n\n"
+
+        "Given a Korean transcript describing a dataset:\n"
+
+        "1. Extract EVERY column name mentioned.\n"
+        "Example:\n"
+        "'나이, 소득, 점수' -> "
+        '{"columns":["나이","소득","점수"]}\n\n'
+
+        "2. ONLY use ['값'] if NO column names are mentioned anywhere.\n"
+
+        "3. Preserve the original Korean names exactly.\n"
+        
         "Read the following Korean transcript about a dataset.\n"
         "1. Extract column names into 'columns'. If it just talks about 'values' (값), use [\"값\"].\n"
         "2. If it asks to GENERATE data (e.g., '140 rows'), set 'num_rows' and leave 'data_rows' empty.\n"
