@@ -1,10 +1,12 @@
-import os , json
+import os , json 
+import tempfile
 import base64
 import hashlib
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
+from mutagen.mp3 import MP3
 
 from google import genai
 from google.genai import types
@@ -84,12 +86,21 @@ def inspect():
         else:
             print("FORMAT: UNKNOWN")
 
-        filename = f"{audio_id}.mp3"
-
-        with open(filename, "wb") as f:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
             f.write(audio_bytes)
+            filename = f.name
 
-        print("saved:", filename)
+        print("Saved to:", filename)
+        
+        audio = MP3(filename)
+
+        print("=" * 80)
+        print("AUDIO INFO")
+        print("=" * 80)
+        print("Duration:", audio.info.length)
+        print("Bitrate:", audio.info.bitrate)
+        print("Sample Rate:", audio.info.sample_rate)
+        print("=" * 80)
         
         
         response = client.models.generate_content(
