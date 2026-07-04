@@ -1,30 +1,128 @@
-import os , json 
-import tempfile
 import base64
-import hashlib
+import io
+import re
+from statistics import (
+    mean,
+    median,
+    mode,
+    pstdev,
+    pvariance,
+)
 
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from dotenv import load_dotenv
-from mutagen.mp3 import MP3
-
+from fastapi import APIRouter, Request
 from google import genai
 from google.genai import types
 
-load_dotenv()
+from config import config
+from utils import chat, parse_json
 
-client = genai.Client(
-    api_key=os.getenv("GEMINI_API_KEY")
-)
+router = APIRouter()
 
-app = Flask(__name__)
-CORS(app)
+# Gemini client
+client = genai.Client(api_key=config.GEMINI_API_KEY)
+
+last_debug_info = {}
 
 
-def empty_response():
-    return {
-        "rows": 0,
-        "columns": [],
+@router.get("/debug")
+def get_debug():
+    return last_debug_info
+
+
+@router.post("/answer-audio")
+async def answer_audio(request: Request):
+    global last_debug_info
+
+    body = await request.json()
+    last_debug_info = {"body_id": body.get("audio_id")}
+
+    audio_b64 = body.get("audio_base64", "")
+    transcript = ""
+
+    try:
+        audio_bytes = base64.b64decode(audio_b64)
+
+        mime_type = "audio/wav"
+
+        if audio_bytes.startswith(b"ID3") or audio_bytes.startswith(b"\xff\xfb"):
+            mime_type = "audio/mpeg"
+
+        elif audio_bytes.startswith(b"OggS"):
+            mime_type = "audio/ogg"
+
+        elif audio_bytes.startswith(b"fLaC"):
+            mime_type = "audio/flac"
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                "Transcribe this audio precisely in Korean. Output ONLY the Korean transcription, nothing else.",
+                types.Part.from_bytes(
+                    data=audio_bytes,
+                    mime_type=mime_type,
+                ),
+            ],
+        )
+
+        transcript = response.text.strip()
+
+    except Exception as e:
+        last_debug_info["exception"] = str(e)
+
+    last_debug_info["transcript"] = transcript
+
+    prompt = (
+        "Read the following Korean transcript about a dataset.\n"
+        "1. Extract column names into 'columns'. If it just talks about 'values' (값), use [\"값\"].\n"
+        "2. If it asks to GENERATE data (e.g., '140 rows'), set 'num_rows' and leave 'data_rows' empty.\n"
+        "3. MUST extract ANY specific constraints into 'explicit_stats'.\n"
+        "CRITICAL EXAMPLES for explicit_stats:\n"
+        "- '평균' (mean) -> {\"mean\": {\"값\": 170}}\n"
+        "- '표준편차' (std) -> {\"std\": {\"값\": 5}}\n"
+        "- '~사이' (between X and Y) -> {\"value_range\": {\"값\": [X, Y]}}\n"
+        "- '허용값' (allowed values) -> {\"allowed_values\": {\"값\": [A, B]}}\n\n"
+        "Return STRICT JSON:\n"
+        "{\"columns\": [\"값\"], "
+        "\"data_rows\": [], "
+        "\"num_rows\": 100, "
+        "\"explicit_stats\": {"
+        "\"value_range\": {\"값\": [10,20]}}}\n\n"
+        f"TRANSCRIPT:\n{transcript}"
+    )
+    
+    columns = []
+    data_rows = []
+    num_rows = None
+    explicit_stats = {}
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
+
+        raw_llm = response.text.strip()
+
+        last_debug_info["raw_llm"] = raw_llm
+
+        extracted = parse_json(raw_llm)
+
+        columns = extracted.get("columns", [])
+        data_rows = extracted.get("data_rows", []) or []
+        num_rows = extracted.get("num_rows")
+        explicit_stats = extracted.get("explicit_stats", {})
+
+    except Exception as e:
+        last_debug_info["parse_exception"] = str(e)
+
+    if not columns:
+        columns = ["값"]
+
+    actual_rows = num_rows if num_rows is not None else len(data_rows)
+
+    out = {
+        "rows": actual_rows,
+        "columns": columns,
         "mean": {},
         "std": {},
         "variance": {},
@@ -35,154 +133,73 @@ def empty_response():
         "range": {},
         "allowed_values": {},
         "value_range": {},
-        "correlation": []
+        "correlation": [],
     }
 
+    def col_values(col_index):
+        values = []
 
-@app.route("/")
-def home():
-    return {
-        "status": "running"
-    }
+        for row in data_rows:
+            try:
+                s = str(row[col_index])
+                s = re.sub(r"[^\d\.\-]", "", s)
 
+                if s:
+                    values.append(float(s))
 
-@app.route("/", methods=["POST"])
-def inspect():
+            except Exception:
+                pass
 
-    try:
+        return values
 
-        data = request.get_json(force=True)
+    for ci, name in enumerate(columns):
+        values = col_values(ci)
 
-        audio_id = data.get("audio_id")
+        if not values:
+            continue
 
-        audio_b64 = data.get("audio_base64", "")
-
-        audio_bytes = base64.b64decode(audio_b64)
-
-        print("\n")
-        print("=" * 80)
-        print("NEW AUDIO")
-        print("=" * 80)
-
-        print("audio_id:", audio_id)
-
-        print("base64 length:", len(audio_b64))
-
-        print("decoded bytes:", len(audio_bytes))
-
-        print("sha256:", hashlib.sha256(audio_bytes).hexdigest())
-
-        print("first16:", audio_bytes[:16].hex())
-
-        if audio_bytes[:2] == b"\xff\xf3" or audio_bytes[:2] == b"\xff\xfb":
-            print("FORMAT: MP3")
-
-        elif audio_bytes.startswith(b"RIFF"):
-            print("FORMAT: WAV")
-
-        elif audio_bytes.startswith(b"OggS"):
-            print("FORMAT: OGG")
-
-        else:
-            print("FORMAT: UNKNOWN")
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
-            f.write(audio_bytes)
-            filename = f.name
-
-        print("Saved to:", filename)
-        
-        audio = MP3(filename)
-
-        print("=" * 80)
-        print("AUDIO INFO")
-        print("=" * 80)
-        print("Duration:", audio.info.length)
-        print("Bitrate:", audio.info.bitrate)
-        print("Sample Rate:", audio.info.sample_rate)
-        print("=" * 80)
-        
-        
-        response = client.models.generate_content(
-            model="gemini-2.5-pro",
-            contents=[
-                types.Part.from_bytes(
-                    data=audio_bytes,
-                    mime_type="audio/mpeg"
-                ),
-                """
-        You are an expert Korean speech transcription system.
-
-        Your ONLY task is to transcribe the audio.
-
-        Rules:
-
-        - Write every spoken word exactly.
-        - Do not summarize.
-        - Do not infer.
-        - Do not interpret.
-        - Do not translate.
-        - Do not generate any dataset.
-        - Do not complete missing information.
-        - If a word is unclear, write [unclear].
-        - Preserve sentence boundaries.
-
-        Return ONLY valid JSON:
-
-        {
-        "transcript":"..."
-        }
-        """
-            ]
-        )
-
-        raw = response.text.strip()
-
-        print("\n")
-        print("=" * 80)
-        print("RAW GEMINI OUTPUT")
-        print("=" * 80)
-        print(raw)
-        print("=" * 80)
-
-        # Remove accidental markdown fences
-        raw = raw.replace("```json", "").replace("```", "").strip()
+        out["mean"][name] = mean(values)
+        out["std"][name] = pstdev(values) if len(values) > 1 else 0.0
+        out["variance"][name] = pvariance(values) if len(values) > 1 else 0.0
+        out["min"][name] = min(values)
+        out["max"][name] = max(values)
+        out["median"][name] = median(values)
 
         try:
+            out["mode"][name] = mode(values)
+        except Exception:
+            out["mode"][name] = values[0]
 
-            parsed = json.loads(raw)
+        out["range"][name] = max(values) - min(values)
+        out["value_range"][name] = [min(values), max(values)]
 
-            print("\n")
-            print("=" * 80)
-            print("TRANSCRIPT")
-            print("=" * 80)
-            print(parsed["debug"]["transcript"])
+    norm_map = {
+        "standard_deviation": "std",
+        "average": "mean",
+        "minimum": "min",
+        "maximum": "max",
+    }
 
-            print("\n")
-            print("=" * 80)
-            print("INSTRUCTIONS")
-            print("=" * 80)
-            print(json.dumps(parsed["debug"]["instructions"], indent=2, ensure_ascii=False))
+    for key, value in explicit_stats.items():
+        normalized_key = norm_map.get(key, key)
 
-            print("=" * 80)
+        if isinstance(value, dict):
 
-            return jsonify(parsed["result"])
+            if normalized_key in out and isinstance(out[normalized_key], dict):
+                out[normalized_key].update(value)
 
-        except Exception as e:
+            else:
+                for stat_name, stat_value in value.items():
+                    normalized_stat = norm_map.get(stat_name, stat_name)
 
-            print("JSON PARSE ERROR:", e)
+                    if (
+                        normalized_stat in out
+                        and isinstance(out[normalized_stat], dict)
+                    ):
+                        out[normalized_stat][key] = stat_value
 
-            return jsonify(empty_response())
-    except Exception as e:
+        else:
+            if normalized_key in out and columns:
+                out[normalized_key][columns[0]] = value
 
-        print(e)
-
-        return jsonify(empty_response())
-    
-
-if __name__ == "__main__":
-
-    app.run(
-        host="0.0.0.0",
-        port=5000
-    )
+    return out
