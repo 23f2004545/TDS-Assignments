@@ -104,87 +104,34 @@ def inspect():
         
         
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.5-pro",
             contents=[
                 types.Part.from_bytes(
                     data=audio_bytes,
                     mime_type="audio/mpeg"
                 ),
                 """
-        You are given a Korean audio recording.
+        You are an expert Korean speech transcription system.
 
-        Understand EVERYTHING spoken.
+        Your ONLY task is to transcribe the audio.
 
-        Do NOT summarize.
+        Rules:
 
-        Do NOT omit constraints.
+        - Write every spoken word exactly.
+        - Do not summarize.
+        - Do not infer.
+        - Do not interpret.
+        - Do not translate.
+        - Do not generate any dataset.
+        - Do not complete missing information.
+        - If a word is unclear, write [unclear].
+        - Preserve sentence boundaries.
 
-        Your task is:
-
-        1. Produce a verbatim transcript.
-
-        2. Extract every instruction mentioned.
-
-        This includes:
-
-        - dataset size
-        - column names
-        - column types
-        - categorical values
-        - numeric ranges
-        - distributions
-        - random seed
-        - ordering
-        - formulas
-        - statistical operations
-        - every explicit or implicit constraint
-
-        3. Follow those instructions exactly.
-
-        4. Generate the requested dataset.
-
-        5. Compute:
-
-        rows
-        columns
-        mean
-        std
-        variance
-        min
-        max
-        median
-        mode
-        range
-        allowed_values
-        value_range
-        correlation
-
-        Return ONLY valid JSON.
+        Return ONLY valid JSON:
 
         {
-        "debug":{
-            "transcript":"",
-            "instructions":{}
-        },
-        "result":{
-            "rows":0,
-            "columns":[],
-            "mean":{},
-            "std":{},
-            "variance":{},
-            "min":{},
-            "max":{},
-            "median":{},
-            "mode":{},
-            "range":{},
-            "allowed_values":{},
-            "value_range":{},
-            "correlation":[]
+        "transcript":"..."
         }
-        }
-
-        Do not wrap the JSON inside markdown.
-        Do not write anything before or after the JSON.
         """
             ]
         )
