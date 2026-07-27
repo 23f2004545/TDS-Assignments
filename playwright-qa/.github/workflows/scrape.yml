@@ -1,0 +1,30 @@
+name: Playwright QA
+
+on:
+
+  workflow_dispatch:
+
+  push:
+
+jobs:
+
+  scrape:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - name: 23f2004545@ds.study.iitm.ac.in
+        run: echo "Running QA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - run: playwright install chromium
+
+      - run: python scrape.py
