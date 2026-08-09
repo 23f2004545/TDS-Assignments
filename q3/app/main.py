@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from .policy import evaluate_policy
+from .policy import evaluate_action_firewall, evaluate_policy
 
 
 app = FastAPI(
@@ -51,6 +51,26 @@ async def terraform_plan(request: Request):
         )
 
     result = evaluate_policy(payload)
+
+    return JSONResponse(
+        status_code=200,
+        content=result,
+    )
+    
+@app.post("/action-firewall")
+async def action_firewall(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "decision": "block",
+                "reason": "INVALID_SCHEMA",
+            },
+        )
+
+    result = evaluate_action_firewall(payload)
 
     return JSONResponse(
         status_code=200,
