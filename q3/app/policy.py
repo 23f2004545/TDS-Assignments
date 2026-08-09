@@ -1,5 +1,10 @@
+from html.parser import HTMLParser
 from typing import Any
 
+
+# ============================================================
+# Terraform policy
+# ============================================================
 
 WORKSPACE = "prod-ngjwwn"
 
@@ -11,18 +16,16 @@ REQUIRED_LABELS = {
 
 ALLOWED_BACKENDS = {"gcs", "s3", "azurerm", "remote"}
 
-ALLOWED_ACTIONS = {"create", "update", "delete"}
+ALLOWED_PROVIDER_VERSIONS = {
+    "6.2.1",
+    "= 6.2.1",
+    "~> 6.0",
+}
 
 DESTRUCTIVE_RESOURCE_TYPES = {
     "storage_bucket",
     "sql_database",
     "persistent_disk",
-}
-
-ALLOWED_PROVIDER_VERSIONS = {
-    "6.2.1",
-    "= 6.2.1",
-    "~> 6.0",
 }
 
 
@@ -42,8 +45,8 @@ def approve() -> dict[str, str]:
 
 def is_bool(value: Any) -> bool:
     """
-    bool is a subclass of int in Python, so use this instead of isinstance(x, int)
-    when we specifically require a JSON boolean.
+    bool is a subclass of int in Python, so type(value) is bool
+    is used when an actual JSON boolean is required.
     """
     return type(value) is bool
 
@@ -55,13 +58,12 @@ def is_string(value: Any) -> bool:
 def validate_types(payload: Any) -> bool:
     """
     Rule 1:
-    Validate the normalized request and all required nested fields.
+    Validate the normalized Terraform request and nested objects.
     """
 
     if not isinstance(payload, dict):
         return False
 
-    # Top-level fields
     if not is_string(payload.get("environment")):
         return False
 
@@ -77,7 +79,6 @@ def validate_types(payload: Any) -> bool:
     if not isinstance(payload.get("resource"), dict):
         return False
 
-    # State
     state = payload["state"]
 
     if not is_string(state.get("backend")):
@@ -86,7 +87,6 @@ def validate_types(payload: Any) -> bool:
     if not is_bool(state.get("locked")):
         return False
 
-    # Resource
     resource = payload["resource"]
 
     if not is_string(resource.get("address")):
@@ -112,7 +112,6 @@ def validate_types(payload: Any) -> bool:
     if not is_bool(resource.get("forceDestroy")):
         return False
 
-    # Labels must be string values.
     labels = resource["labels"]
 
     if not all(is_string(k) and is_string(v) for k, v in labels.items()):
@@ -123,9 +122,7 @@ def validate_types(payload: Any) -> bool:
 
 def evaluate_policy(payload: Any) -> dict[str, str]:
     """
-    Evaluate the policy in the exact required order.
-
-    Returns the first applicable rejection reason.
+    Evaluate the Terraform policy in the exact required order.
     """
 
     # ---------------------------------------------------------
@@ -194,7 +191,7 @@ def evaluate_policy(payload: Any) -> dict[str, str]:
     # ---------------------------------------------------------
     if (
         resource["type"] == "storage_bucket"
-        and environment == "prod-ngjwwn"
+        and environment == WORKSPACE
         and resource["forceDestroy"] is True
     ):
         return reject("FORCE_DESTROY")
@@ -203,10 +200,11 @@ def evaluate_policy(payload: Any) -> dict[str, str]:
 
 
 # ============================================================
-# Action firewall
+# Action Firewall
 # ============================================================
 
 FIREWALL_TENANT = "tenant-0uy7uzi"
+
 ALLOWED_EMAIL_DOMAIN = "notify-w15mpvm.example"
 
 ALLOWED_TOOLS = {
@@ -217,7 +215,14 @@ ALLOWED_TOOLS = {
 }
 
 
-def firewall_result(decision: str, reason: str) -> dict[str, str]:
+# ============================================================
+# Firewall response helpers
+# ============================================================
+
+def firewall_result(
+    decision: str,
+    reason: str,
+) -> dict[str, str]:
     return {
         "decision": decision,
         "reason": reason,
@@ -232,53 +237,81 @@ def firewall_block(reason: str) -> dict[str, str]:
     return firewall_result("block", reason)
 
 
+# ============================================================
+# Firewall schema validation
+# ============================================================
+
 def validate_firewall_top_level(payload: Any) -> bool:
     """
-    Rule 1: validate the top-level normalized action request.
+    Validate the normalized firewall request.
 
-    Expected:
-    {
-        "provenance": "trusted | untrusted",
-        "humanApproved": false,
-        "untrustedContent": "optional text",
-        "action": {
-            "tool": "...",
-            "args": {...}
-        }
-    }
+    Required fields:
 
-    untrustedContent is optional.
+        provenance
+        humanApproved
+        action
+
+    Optional field:
+
+        untrustedContent
+
+    The important distinction is that untrustedContent is genuinely
+    optional. If supplied, it must be text.
+
+    No content inspection or suspicious-phrase matching happens here.
     """
 
     if not isinstance(payload, dict):
         return False
 
-    required_keys = {
+    required_fields = {
         "provenance",
         "humanApproved",
         "action",
     }
 
-    # Top-level fields are intentionally strict.
-    if set(payload.keys()) - required_keys - {"untrustedContent"}:
+    optional_fields = {
+        "untrustedContent",
+    }
+
+    allowed_fields = required_fields | optional_fields
+
+    # Reject unknown top-level fields.
+    if not set(payload.keys()).issubset(allowed_fields):
         return False
 
-    if set(payload.keys()) != required_keys:
+    # All required fields must exist.
+    if not required_fields.issubset(payload.keys()):
         return False
 
-    if payload["provenance"] not in {"trusted", "untrusted"}:
+    # provenance
+    if payload["provenance"] not in {
+        "trusted",
+        "untrusted",
+    }:
         return False
 
+    # humanApproved must be an actual boolean.
     if type(payload["humanApproved"]) is not bool:
         return False
 
+    # untrustedContent is optional.
+    # If present, it must be text.
+    if "untrustedContent" in payload:
+        if not isinstance(payload["untrustedContent"], str):
+            return False
+
+    # action must be an object.
     if not isinstance(payload["action"], dict):
         return False
 
     action = payload["action"]
 
-    # action itself must have exactly tool + args.
-    if set(action.keys()) != {"tool", "args"}:
+    # action must contain exactly tool + args.
+    if set(action.keys()) != {
+        "tool",
+        "args",
+    }:
         return False
 
     if not isinstance(action["tool"], str):
@@ -290,89 +323,19 @@ def validate_firewall_top_level(payload: Any) -> bool:
     return True
 
 
-def normalize_url_for_safety(value: str) -> str:
-    """
-    Normalize enough to detect javascript: schemes despite casing,
-    surrounding whitespace, or ASCII control characters.
-    """
-    value = value.strip()
+# ============================================================
+# Tool-specific argument schemas
+# ============================================================
 
-    # Remove ASCII whitespace/control characters that can be used to
-    # disguise a javascript scheme.
-    value = "".join(
-        char for char in value
-        if ord(char) > 0x20
-    )
-
-    return value.casefold()
-
-
-def html_is_safe(html: str) -> bool:
-    """
-    Deterministic HTML safety check.
-
-    Blocks:
-      - <script>
-      - <iframe>
-      - inline event handlers such as onclick/onload
-      - javascript: URLs
-
-    Does not inspect natural-language content for "suspicious phrases".
-    """
-
-    class SafetyParser(HTMLParser):
-        def __init__(self) -> None:
-            super().__init__(convert_charrefs=True)
-            self.unsafe = False
-
-        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-            tag_lower = tag.casefold()
-
-            if tag_lower in {"script", "iframe"}:
-                self.unsafe = True
-                return
-
-            for name, value in attrs:
-                name_lower = name.casefold()
-
-                # Inline event handler: onclick, onload, onerror, etc.
-                if name_lower.startswith("on"):
-                    self.unsafe = True
-                    return
-
-                if value is not None:
-                    normalized = normalize_url_for_safety(value)
-
-                    if normalized.startswith("javascript:"):
-                        self.unsafe = True
-                        return
-
-        def handle_startendtag(
-            self,
-            tag: str,
-            attrs: list[tuple[str, str | None]],
-        ) -> None:
-            self.handle_starttag(tag, attrs)
-
-        def handle_comment(self, data: str) -> None:
-            # Comments themselves are not executable.
-            pass
-
-    parser = SafetyParser()
-
-    try:
-        parser.feed(html)
-        parser.close()
-    except Exception:
-        return False
-
-    return not parser.unsafe
-
-
-def validate_search_args(args: dict[str, Any]) -> bool:
+def validate_search_args(
+    args: dict[str, Any],
+) -> bool:
     """
     search:
-      exactly {"query": "1–200 characters"}
+
+        exactly {
+            "query": "1–200 characters"
+        }
     """
 
     if set(args.keys()) != {"query"}:
@@ -389,13 +352,22 @@ def validate_search_args(args: dict[str, Any]) -> bool:
     return True
 
 
-def validate_lookup_args(args: dict[str, Any]) -> bool:
+def validate_lookup_args(
+    args: dict[str, Any],
+) -> bool:
     """
     lookup_record:
-      exactly {"tenantId": "...", "recordId": "non-empty"}
+
+        exactly {
+            "tenantId": "...",
+            "recordId": "non-empty"
+        }
     """
 
-    if set(args.keys()) != {"tenantId", "recordId"}:
+    if set(args.keys()) != {
+        "tenantId",
+        "recordId",
+    }:
         return False
 
     tenant_id = args["tenantId"]
@@ -413,13 +385,24 @@ def validate_lookup_args(args: dict[str, Any]) -> bool:
     return True
 
 
-def validate_email_args(args: dict[str, Any]) -> bool:
+def validate_email_args(
+    args: dict[str, Any],
+) -> bool:
     """
     send_email:
-      exactly {"to": "...", "subject": "...", "body": "..."}
+
+        exactly {
+            "to": "...",
+            "subject": "...",
+            "body": "..."
+        }
     """
 
-    if set(args.keys()) != {"to", "subject", "body"}:
+    if set(args.keys()) != {
+        "to",
+        "subject",
+        "body",
+    }:
         return False
 
     if not isinstance(args["to"], str):
@@ -434,35 +417,15 @@ def validate_email_args(args: dict[str, Any]) -> bool:
     return True
 
 
-def email_domain_is_allowed(recipient: str) -> bool:
-    """
-    Require an email-like address whose domain is exactly the assigned
-    domain.
-
-    Examples:
-      user@notify-w15mpvm.example       -> True
-      user@NOTIFY-W15MPVM.EXAMPLE       -> True
-      user@evil.example                 -> False
-      user@notify-w15mpvm.example.evil  -> False
-    """
-
-    recipient = recipient.strip()
-
-    if recipient.count("@") != 1:
-        return False
-
-    local_part, domain = recipient.rsplit("@", 1)
-
-    if not local_part or not domain:
-        return False
-
-    return domain.casefold() == ALLOWED_EMAIL_DOMAIN.casefold()
-
-
-def validate_render_html_args(args: dict[str, Any]) -> bool:
+def validate_render_html_args(
+    args: dict[str, Any],
+) -> bool:
     """
     render_html:
-      exactly {"html": "..."}
+
+        exactly {
+            "html": "..."
+        }
     """
 
     if set(args.keys()) != {"html"}:
@@ -474,83 +437,288 @@ def validate_render_html_args(args: dict[str, Any]) -> bool:
     return True
 
 
-def evaluate_action_firewall(payload: Any) -> dict[str, str]:
-    """
-    Evaluate the firewall rules in the exact required order:
+# ============================================================
+# Tenant scope
+# ============================================================
 
-    1. Top-level schema
-    2. Tool allowlist
-    3. Selected tool argument schema
-    4. Tenant scope
-    5. Exact email domain
-    6. Human approval
-    7. HTML safety
+def tenant_is_allowed(
+    args: dict[str, Any],
+) -> bool:
+    """
+    Only lookup_record carries the tenant scope in this policy.
     """
 
-    # ---------------------------------------------------------
-    # 1. Top-level schema
-    # ---------------------------------------------------------
+    return args["tenantId"] == FIREWALL_TENANT
+
+
+# ============================================================
+# Email egress
+# ============================================================
+
+def email_domain_is_allowed(
+    recipient: str,
+) -> bool:
+    """
+    Require exactly one @ and an exact recipient domain.
+
+    Examples:
+
+        user@notify-w15mpvm.example
+            -> allowed
+
+        user@NOTIFY-W15MPVM.EXAMPLE
+            -> allowed
+
+        user@gmail.com
+            -> blocked
+
+        user@notify-w15mpvm.example.evil
+            -> blocked
+
+        user@evil.notify-w15mpvm.example
+            -> blocked
+    """
+
+    if not isinstance(recipient, str):
+        return False
+
+    # Do not silently transform malformed addresses into valid ones.
+    if recipient.count("@") != 1:
+        return False
+
+    local_part, domain = recipient.rsplit("@", 1)
+
+    if not local_part:
+        return False
+
+    if not domain:
+        return False
+
+    # Email domains are case-insensitive.
+    return domain.casefold() == ALLOWED_EMAIL_DOMAIN.casefold()
+
+
+# ============================================================
+# HTML safety
+# ============================================================
+
+def normalize_url_for_safety(
+    value: str,
+) -> str:
+    """
+    Normalize enough to detect disguised javascript: URLs.
+
+    This is structural URL checking, not phrase matching.
+    """
+
+    value = value.strip()
+
+    # Remove ASCII control/whitespace characters that can disguise
+    # a scheme such as:
+    #
+    #   java\nscript:
+    #
+    # or:
+    #
+    #   java script:
+    #
+    value = "".join(
+        character
+        for character in value
+        if ord(character) > 0x20
+    )
+
+    return value.casefold()
+
+
+def html_is_safe(
+    html: str,
+) -> bool:
+    """
+    Deterministic HTML safety check.
+
+    Blocks:
+
+      - script elements
+      - iframe elements
+      - inline event handlers
+      - javascript: URLs
+
+    Does not inspect natural-language text for suspicious phrases.
+    """
+
+    class SafetyParser(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__(
+                convert_charrefs=True,
+            )
+            self.unsafe = False
+
+        def handle_starttag(
+            self,
+            tag: str,
+            attrs: list[tuple[str, str | None]],
+        ) -> None:
+            tag_lower = tag.casefold()
+
+            if tag_lower in {
+                "script",
+                "iframe",
+            }:
+                self.unsafe = True
+                return
+
+            for name, value in attrs:
+                name_lower = name.casefold()
+
+                # HTML inline event-handler attributes:
+                #
+                # onclick
+                # onload
+                # onerror
+                # onmouseover
+                # etc.
+                if name_lower.startswith("on"):
+                    self.unsafe = True
+                    return
+
+                if value is not None:
+                    normalized = normalize_url_for_safety(value)
+
+                    if normalized.startswith("javascript:"):
+                        self.unsafe = True
+                        return
+
+        def handle_startendtag(
+            self,
+            tag: str,
+            attrs: list[tuple[str, str | None]],
+        ) -> None:
+            self.handle_starttag(
+                tag,
+                attrs,
+            )
+
+    parser = SafetyParser()
+
+    try:
+        parser.feed(html)
+        parser.close()
+    except Exception:
+        return False
+
+    return not parser.unsafe
+
+
+# ============================================================
+# Main firewall evaluator
+# ============================================================
+
+def evaluate_action_firewall(
+    payload: Any,
+) -> dict[str, str]:
+    """
+    Evaluate the action firewall in the exact required order:
+
+        1. Top-level schema
+        2. Tool allowlist
+        3. Selected tool argument schema
+        4. Tenant scope
+        5. Exact email domain
+        6. Human approval
+        7. HTML safety
+
+    The provenance and untrustedContent fields do NOT grant or
+    remove capabilities.
+
+    The proposed action itself is the security boundary.
+    """
+
+    # ========================================================
+    # 1. TOP-LEVEL SCHEMA
+    # ========================================================
+
     if not validate_firewall_top_level(payload):
         return firewall_block("INVALID_SCHEMA")
 
     action = payload["action"]
+
     tool = action["tool"]
     args = action["args"]
 
-    # ---------------------------------------------------------
-    # 2. Tool allowlist
-    # ---------------------------------------------------------
+    # ========================================================
+    # 2. TOOL ALLOWLIST
+    # ========================================================
+
     if tool not in ALLOWED_TOOLS:
         return firewall_block("TOOL_NOT_ALLOWED")
 
-    # ---------------------------------------------------------
-    # 3. Selected tool argument schema
-    # ---------------------------------------------------------
+    # ========================================================
+    # 3. TOOL ARGUMENT SCHEMA
+    # ========================================================
+
     if tool == "search":
+
         if not validate_search_args(args):
             return firewall_block("INVALID_SCHEMA")
 
     elif tool == "lookup_record":
+
         if not validate_lookup_args(args):
             return firewall_block("INVALID_SCHEMA")
 
     elif tool == "send_email":
+
         if not validate_email_args(args):
             return firewall_block("INVALID_SCHEMA")
 
     elif tool == "render_html":
+
         if not validate_render_html_args(args):
             return firewall_block("INVALID_SCHEMA")
 
-    # ---------------------------------------------------------
-    # 4. Tenant scope
-    # ---------------------------------------------------------
+    # ========================================================
+    # 4. TENANT SCOPE
+    # ========================================================
+
     if tool == "lookup_record":
-        if args["tenantId"] != FIREWALL_TENANT:
+
+        if not tenant_is_allowed(args):
             return firewall_block("TENANT_SCOPE")
 
-    # ---------------------------------------------------------
-    # 5. Exact email domain
-    # ---------------------------------------------------------
+    # ========================================================
+    # 5. EXACT EMAIL DOMAIN
+    # ========================================================
+
     if tool == "send_email":
-        if not email_domain_is_allowed(args["to"]):
+
+        if not email_domain_is_allowed(
+            args["to"]
+        ):
             return firewall_block("EGRESS_DENIED")
 
-    # ---------------------------------------------------------
-    # 6. Human approval
-    # ---------------------------------------------------------
+    # ========================================================
+    # 6. HUMAN APPROVAL
+    # ========================================================
+
     if tool == "send_email":
+
         if payload["humanApproved"] is not True:
             return firewall_block("APPROVAL_REQUIRED")
 
-    # ---------------------------------------------------------
-    # 7. HTML safety
-    # ---------------------------------------------------------
+    # ========================================================
+    # 7. HTML SAFETY
+    # ========================================================
+
     if tool == "render_html":
-        if not html_is_safe(args["html"]):
+
+        if not html_is_safe(
+            args["html"]
+        ):
             return firewall_block("UNSAFE_OUTPUT")
 
-    # ---------------------------------------------------------
-    # All rules passed.
-    # ---------------------------------------------------------
+    # ========================================================
+    # EVERYTHING PASSED
+    # ========================================================
+
     return firewall_allow()
