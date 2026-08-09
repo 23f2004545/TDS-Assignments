@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'q1/**' 
+      - 'q1/**'
 
 permissions:
   contents: read
@@ -18,7 +18,8 @@ jobs:
 
     steps:
       - name: "TDS identity: 23f2004545@ds.study.iitm.ac.in"
-        run: echo "TDS identity: 23f2004545@ds.study.iitm.ac.in"
+        run: |
+          echo "TDS identity: 23f2004545@ds.study.iitm.ac.in"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,9 +30,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        working-directory: ./q1 
+        working-directory: ./q1
         run: pip install -r requirements.txt
 
       - name: Run release gate tests
-        working-directory: ./q1 
+        working-directory: ./q1
         run: pytest -q
