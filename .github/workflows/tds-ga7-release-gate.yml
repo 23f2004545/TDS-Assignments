@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'q1/**' # Only triggers when files inside the q1 folder change
 
 permissions:
   contents: read
@@ -27,7 +29,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
+        working-directory: ./q1 # Runs pip install inside the q1 directory
         run: pip install -r requirements.txt
 
       - name: Run release gate tests
+        working-directory: ./q1 # Runs pytest inside the q1 directory
         run: pytest -q
