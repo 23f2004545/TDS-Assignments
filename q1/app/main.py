@@ -53,4 +53,3 @@ async def release_gate(request: Request):
         status_code=200,
         content=result,
     )
-    
