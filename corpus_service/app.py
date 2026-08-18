@@ -148,7 +148,7 @@ def process(payload):
         gen_ok = isinstance(gen, str) and GEN_RE.fullmatch(gen) is not None
         fgen_ok = isinstance(fgen, str) and GEN_RE.fullmatch(fgen) is not None
         if not gen_ok or not fgen_ok: oc.append('GENERATION_INVALID')
-        if isinstance(gen, str) and isinstance(fgen, str) and gen_ok and fgen_ok and gen != fgen:
+        if isinstance(gen, str) and isinstance(fgen, str) and gen != fgen:
             oc.append('GENERATION_MISMATCH')
 
         crc = obj.get('crc32c') if isinstance(obj, dict) else None
@@ -164,7 +164,7 @@ def process(payload):
         if isinstance(content, str):
             parsed_rows = []
             try:
-                for line in content.splitlines():
+                for line in content.split('\n'):
                     if not line.strip():
                         continue
                     parsed_rows.append(json.loads(line))
@@ -220,11 +220,11 @@ def process(payload):
         bucket = hashlib.sha256(r['entity'].encode('utf-8')).digest()[0] % 10
         split = 'train' if bucket <= 5 else ('validation' if bucket <= 7 else 'test')
         splits[split].append(r)
-    train_sets = [word_set(r['entity'] + ' ' + r['text']) for r in splits['train']]
+    train_sets = [word_set(r['text']) for r in splits['train']]
     for split in ('validation','test'):
         kept = []
         for r in splits[split]:
-            rs = word_set(r['entity'] + ' ' + r['text'])
+            rs = word_set(r['text'])
             if any(jaccard(rs, ts) >= th for ts in train_sets):
                 rejected_rows.append({'id': r['id'], 'reasonCodes': ['TRAIN_CONTAMINATION']})
             else:
@@ -233,7 +233,7 @@ def process(payload):
 
     for s in splits:
         splits[s].sort(key=row_sort_key)
-    rejected_objects.sort(key=lambda x: (x['uri'] is not None, (x['uri'] or '').encode('utf-8'), json_compact(x).encode('utf-8')))
+    rejected_objects.sort(key=lambda x: ((x['uri'].encode('utf-8') if isinstance(x['uri'], str) else b''), json_compact(x).encode('utf-8')))
     # Merge reasons for same rejected row ID and sort deterministically.
     merged = {}
     for x in rejected_rows:
